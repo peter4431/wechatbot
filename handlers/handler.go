@@ -2,12 +2,10 @@ package handlers
 
 import (
 	"fmt"
-	"github.com/qingconglaixueit/wechatbot/config"
-	"github.com/qingconglaixueit/wechatbot/pkg/logger"
 	"github.com/eatmoreapple/openwechat"
 	"github.com/patrickmn/go-cache"
-	"github.com/skip2/go-qrcode"
-	"log"
+	"github.com/qingconglaixueit/wechatbot/config"
+	"github.com/qingconglaixueit/wechatbot/pkg/logger"
 	"runtime"
 	"strings"
 	"time"
@@ -27,11 +25,9 @@ func QrCodeCallBack(uuid string) {
 		// 运行在Windows系统上
 		openwechat.PrintlnQrcodeUrl(uuid)
 	} else {
-		log.Println("login in linux")
-		url := "https://login.weixin.qq.com/l/" + uuid
-		log.Printf("如果二维码无法扫描，请缩小控制台尺寸，或更换命令行工具，缩小二维码像素")
-		q, _ := qrcode.New(url, qrcode.High)
-		fmt.Println(q.ToSmallString(true))
+		println("访问下面网址扫描二维码登录")
+		qrcodeUrl := openwechat.GetQrcodeUrl(uuid)
+		println(qrcodeUrl)
 	}
 }
 
@@ -67,5 +63,5 @@ func NewHandler() (msgFunc func(msg *openwechat.Message), err error) {
 	dispatcher.RegisterHandler(func(message *openwechat.Message) bool {
 		return !(strings.Contains(message.Content, config.LoadConfig().SessionClearToken) || message.IsSendByGroup() || message.IsFriendAdd())
 	}, UserMessageContextHandler())
-	return openwechat.DispatchMessage(dispatcher), nil
+	return dispatcher.AsMessageHandler(), nil
 }

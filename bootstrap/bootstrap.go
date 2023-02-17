@@ -2,9 +2,9 @@ package bootstrap
 
 import (
 	"fmt"
+	"github.com/eatmoreapple/openwechat"
 	"github.com/qingconglaixueit/wechatbot/handlers"
 	"github.com/qingconglaixueit/wechatbot/pkg/logger"
-	"github.com/eatmoreapple/openwechat"
 )
 
 func Run() {
@@ -23,10 +23,10 @@ func Run() {
 	bot.UUIDCallback = handlers.QrCodeCallBack
 
 	// 创建热存储容器对象
-	reloadStorage := openwechat.NewJsonFileHotReloadStorage("storage.json")
+	reloadStorage := openwechat.NewFileHotReloadStorage("data/storage.json")
 
 	// 执行热登录
-	err = bot.HotLogin(reloadStorage, true)
+	err = bot.HotLogin(reloadStorage, openwechat.NewRetryLoginOption())
 	if err != nil {
 		logger.Warning(fmt.Sprintf("login error: %v ", err))
 		return
