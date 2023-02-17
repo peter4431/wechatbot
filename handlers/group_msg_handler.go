@@ -1,43 +1,26 @@
 package handlers
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"github.com/eatmoreapple/openwechat"
-	"github.com/qingconglaixueit/wechatbot/gpt"
 	"github.com/qingconglaixueit/wechatbot/pkg/logger"
-	"github.com/qingconglaixueit/wechatbot/service"
-	"strings"
+	"github.com/qingconglaixueit/wechatbot/services"
 )
 
-var _ MessageHandlerInterface = (*GroupMessageHandler)(nil)
+var groupMessageHandler = NewGroupMessageHandler()
 
 // GroupMessageHandler 群消息处理
 type GroupMessageHandler struct {
-	// 获取自己
-	self *openwechat.Self
-	// 群
-	group *openwechat.Group
-	// 接收到消息
-	msg *openwechat.Message
-	// 发送的用户
-	sender *openwechat.User
-	// 实现的用户业务
-	service service.UserServiceInterface
+	userCache services.UserCacheInterface
+	msgCache  services.MsgCacheInterface
 }
 
 func GroupMessageContextHandler() func(ctx *openwechat.MessageContext) {
 	return func(ctx *openwechat.MessageContext) {
 		msg := ctx.Message
-		// 获取用户消息处理器
-		handler, err := NewGroupMessageHandler(msg)
-		if err != nil {
-			logger.Warning(fmt.Sprintf("init group message handler error: %s", err))
-			return
-		}
-
 		// 处理用户消息
-		err = handler.handle()
+		err := groupMessageHandler.handle(msg)
 		if err != nil {
 			logger.Warning(fmt.Sprintf("handle group message error: %s", err))
 		}
@@ -45,127 +28,87 @@ func GroupMessageContextHandler() func(ctx *openwechat.MessageContext) {
 }
 
 // NewGroupMessageHandler 创建群消息处理器
-func NewGroupMessageHandler(msg *openwechat.Message) (MessageHandlerInterface, error) {
-	sender, err := msg.Sender()
-	if err != nil {
-		return nil, err
+func NewGroupMessageHandler() MessageHandlerInterface {
+	return &GroupMessageHandler{
+		userCache: services.GetUserCache(),
+		msgCache:  services.GetMsgCache(),
 	}
-	group := &openwechat.Group{User: sender}
-	groupSender, err := msg.SenderInGroup()
-	if err != nil {
-		return nil, err
-	}
+}
 
-	userService := service.NewUserService(c, groupSender)
-	handler := &GroupMessageHandler{
-		self:    sender.Self(),
-		msg:     msg,
-		group:   group,
-		sender:  groupSender,
-		service: userService,
+func toJson(data interface{}) string {
+	ret, _ := json.Marshal(data)
+	if ret != nil {
+		return string(ret)
 	}
-	return handler, nil
-
+	return ""
 }
 
 // handle 处理消息
-func (g *GroupMessageHandler) handle() error {
-	if g.msg.IsText() {
-		return g.ReplyText()
+func (g *GroupMessageHandler) handle(msg *openwechat.Message) error {
+	if !msg.IsText() {
+		return nil
+	}
+	if !msg.IsAt() {
+		return nil
+	}
+
+	sender, err := msg.Sender()
+	if err != nil {
+		return err
+	}
+	group := &openwechat.Group{User: sender}
+	//groupSender, err := msg.SenderInGroup()
+
+	logger.Info(fmt.Sprintf("Received Group %v Text Msg : %v", group.NickName, msg.Content))
+
+	ifMention := judgeIfMentionMe(msg)
+	if !ifMention {
+		return nil
+	}
+	content := msg.Content
+	msgId := msg.MsgId
+	openId := sender.ID()
+
+	if g.msgCache.IfProcessed(msgId) {
+		fmt.Println("msgId", msgId, "processed")
+		return nil
+	}
+	g.msgCache.TagProcessed(msgId)
+	qParsed := parseContent(content)
+	if len(qParsed) == 0 {
+		_, _ = msg.ReplyText("🤖️：你想知道什么呢~")
+		fmt.Println("msgId", msgId, "message.text is empty")
+		return nil
+	}
+
+	if qParsed == "/clear" || qParsed == "清除" {
+		g.userCache.Clear(openId)
+		_, _ = msg.ReplyText("🤖️：AI机器人已清除记忆")
+		return nil
+	}
+
+	prompt := g.userCache.Get(openId)
+	prompt = fmt.Sprintf("%s\nQ:%s\nA:", prompt, qParsed)
+	completions, err := services.Completions(prompt)
+	ok := true
+	if err != nil {
+		_, _ = msg.ReplyText(fmt.Sprintf("🤖️：消息机器人摆烂了，请稍后再试～\n错误信息: %v", err))
+		return nil
+	}
+	if len(completions) == 0 {
+		ok = false
+	}
+	if ok {
+		g.userCache.Set(openId, qParsed, completions)
+		_, err = msg.ReplyText(completions)
+		if err != nil {
+			_, _ = msg.ReplyText(fmt.Sprintf("🤖️：消息机器人摆烂了，请稍后再试～\n错误信息: %v", err))
+			return nil
+		}
 	}
 	return nil
 }
 
-// ReplyText 发息送文本消到群
-func (g *GroupMessageHandler) ReplyText() error {
-	logger.Info(fmt.Sprintf("Received Group %v Text Msg : %v", g.group.NickName, g.msg.Content))
-	var (
-		err   error
-		reply string
-	)
-
-	// 1.不是@的不处理
-	if !g.msg.IsAt() {
-		return nil
-	}
-
-	// 2.获取请求的文本，如果为空字符串不处理
-	requestText := g.getRequestText()
-	if requestText == "" {
-		logger.Info("user message is null")
-		return nil
-	}
-
-	// 3.请求GPT获取回复
-	reply, err = gpt.Completions(requestText)
-	if err != nil {
-		// 2.1 将GPT请求失败信息输出给用户，省得整天来问又不知道日志在哪里。
-		errMsg := fmt.Sprintf("gpt request error: %v", err)
-		_, err = g.msg.ReplyText(errMsg)
-		if err != nil {
-			return errors.New(fmt.Sprintf("response group error: %v ", err))
-		}
-		return err
-	}
-
-	// 4.设置上下文，并响应信息给用户
-	g.service.SetUserSessionContext(requestText, reply)
-	_, err = g.msg.ReplyText(g.buildReplyText(reply))
-	if err != nil {
-		return errors.New(fmt.Sprintf("response user error: %v ", err))
-	}
-
-	// 5.返回错误信息
-	return err
-}
-
-// getRequestText 获取请求接口的文本，要做一些清洗
-func (g *GroupMessageHandler) getRequestText() string {
-	// 1.去除空格以及换行
-	requestText := strings.TrimSpace(g.msg.Content)
-	requestText = strings.Trim(g.msg.Content, "\n")
-
-	// 2.替换掉当前用户名称
-	replaceText := "@" + g.self.NickName
-	requestText = strings.TrimSpace(strings.ReplaceAll(g.msg.Content, replaceText, ""))
-	if requestText == "" {
-		return ""
-	}
-
-	// 3.获取上下文，拼接在一起，如果字符长度超出4000，截取为4000。（GPT按字符长度算），达芬奇3最大为4068，也许后续为了适应要动态进行判断。
-	sessionText := g.service.GetUserSessionContext()
-	requestText = fmt.Sprintf("Q:%s\nA:", requestText)
-	if sessionText != "" {
-		requestText = sessionText + "\n" + requestText
-	}
-	if len(requestText) >= 4000 {
-		requestText = requestText[:4000]
-	}
-
-	// 5.返回请求文本
-	return requestText
-}
-
-// buildReply 构建回复文本
-func (g *GroupMessageHandler) buildReplyText(reply string) string {
-	// 1.获取@我的用户
-	atText := "@" + g.sender.NickName
-	textSplit := strings.Split(reply, "\n\n")
-	if len(textSplit) > 1 {
-		trimText := textSplit[0]
-		reply = strings.Trim(reply, trimText)
-	}
-	reply = strings.TrimSpace(reply)
-	if reply == "" {
-		return atText + " 请求得不到任何有意义的回复，请具体提出问题。"
-	}
-
-	// 2.拼接回复,@我的用户，问题，回复
-	replaceText := "@" + g.self.NickName
-	question := strings.TrimSpace(strings.ReplaceAll(g.msg.Content, replaceText, ""))
-	reply = atText + "\n" + question + "\n --------------------------------\n" + reply
-	reply = strings.Trim(reply, "\n")
-
-	// 3.返回回复的内容
-	return reply
+func judgeIfMentionMe(event *openwechat.Message) bool {
+	return true
 }

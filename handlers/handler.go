@@ -15,8 +15,7 @@ var c = cache.New(config.LoadConfig().SessionTimeout, time.Minute*5)
 
 // MessageHandlerInterface 消息处理接口
 type MessageHandlerInterface interface {
-	handle() error
-	ReplyText() error
+	handle(msg *openwechat.Message) error
 }
 
 // QrCodeCallBack 登录扫码回调，
@@ -33,11 +32,6 @@ func QrCodeCallBack(uuid string) {
 
 func NewHandler() (msgFunc func(msg *openwechat.Message), err error) {
 	dispatcher := openwechat.NewMessageMatchDispatcher()
-
-	// 清空会话
-	dispatcher.RegisterHandler(func(message *openwechat.Message) bool {
-		return strings.Contains(message.Content, config.LoadConfig().SessionClearToken)
-	}, TokenMessageContextHandler())
 
 	// 处理群消息
 	dispatcher.RegisterHandler(func(message *openwechat.Message) bool {
