@@ -14,6 +14,7 @@ func msgFilter(msg string) string {
 	log.Printf("msgFilter before %s data:%s\n", msg, base64.StdEncoding.EncodeToString([]byte(msg)))
 	regex := regexp.MustCompile(`@[^\s]*`)
 	ret := regex.ReplaceAllString(msg, "")
+	ret = strings.TrimSpace(ret)
 	log.Printf("msgFilter after %s\n", ret)
 	return ret
 }
