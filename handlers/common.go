@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"log"
 	"regexp"
@@ -9,12 +10,12 @@ import (
 
 func msgFilter(msg string) string {
 	//replace @到下一个非空的字段 为 ''
-	log.Printf("msgFilter before %s\n", msg)
+	msg = strings.ReplaceAll(msg, " ", " ")
+	log.Printf("msgFilter before %s data:%s\n", msg, base64.StdEncoding.EncodeToString([]byte(msg)))
 	regex := regexp.MustCompile(`@[^\s]*`)
 	ret := regex.ReplaceAllString(msg, "")
-	log.Printf("msgFilter after %s\n", msg)
+	log.Printf("msgFilter after %s\n", ret)
 	return ret
-
 }
 func parseContent(content string) string {
 	return msgFilter(content)
