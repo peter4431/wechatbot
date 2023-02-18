@@ -2,14 +2,18 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"regexp"
 	"strings"
 )
 
 func msgFilter(msg string) string {
 	//replace @到下一个非空的字段 为 ''
-	regex := regexp.MustCompile(`@[^ ]*`)
-	return regex.ReplaceAllString(msg, "")
+	log.Printf("msgFilter before %s\n", msg)
+	regex := regexp.MustCompile(`@[^\s]*`)
+	ret := regex.ReplaceAllString(msg, "")
+	log.Printf("msgFilter after %s\n", msg)
+	return ret
 
 }
 func parseContent(content string) string {
