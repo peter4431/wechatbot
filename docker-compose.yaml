@@ -3,6 +3,8 @@ services:
   wechatbot:
     build: .
     restart: always
+    ports:
+      - "5000:5000"
     volumes:
       - ./data:/dist/data/
       - ./config.json:/dist/config.json

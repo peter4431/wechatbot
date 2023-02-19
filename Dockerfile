@@ -17,4 +17,6 @@ RUN apk add --no-cache bash
 COPY  config.dev.json /dist/config.json
 COPY --from=golang /build/wechatbot /dist
 
+
+EXPOSE 5000
 ENTRYPOINT ["/dist/wechatbot"]
