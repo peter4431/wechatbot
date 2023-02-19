@@ -1,0 +1,8 @@
+<html>
+<h1>
+    用户ID: {{ .id }}
+</h1>
+<div>
+    {{if .isLogin }} 已成功登录，无需再次登录 {{else}} <a href="{{ .loginUrl }}">点击扫码登录</a>{{end}}
+</div>
+</html>

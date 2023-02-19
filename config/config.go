@@ -15,6 +15,8 @@ import (
 type Configuration struct {
 	// gpt apikey
 	ApiKey string `json:"api_key"`
+	// 管理用密码
+	ManageKey string `json:"manage_key"`
 	// 自动通过好友
 	AutoPass bool `json:"auto_pass"`
 	// 会话超时时间
