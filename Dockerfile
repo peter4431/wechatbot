@@ -15,6 +15,7 @@ WORKDIR /dist
 
 RUN apk add --no-cache bash
 COPY  config.dev.json /dist/config.json
+COPY templates/* /dist/templates/
 COPY --from=golang /build/wechatbot /dist
 
 
