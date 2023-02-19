@@ -129,6 +129,7 @@ func botTryLogin(bot *openwechat.Bot, id string) string {
 		err = bot.HotLogin(reloadStorage, openwechat.NewRetryLoginOption())
 		if err != nil {
 			logger.Warning(fmt.Sprintf("login error: %v ", err))
+			idBotMap.Delete(id)
 			return
 		}
 		// 阻塞主goroutine, 直到发生异常或者用户主动退出
@@ -136,6 +137,7 @@ func botTryLogin(bot *openwechat.Bot, id string) string {
 
 		// 退出后需要重新生成 bot
 		idBotMap.Delete(id)
+		logger.Info("delete id:" + id)
 	}()
 	wg.Wait()
 	return url
